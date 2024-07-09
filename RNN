@@ -1,0 +1,82 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import LSTM, Dense, Dropout
+
+
+
+
+df = pd.read_csv("/content/drive/MyDrive/Semester projects/Semester 5/Semester 5 AI/AI Lab 13/Electric_Production.csv")
+print(df.head())
+
+print("Missing values:", df.isnull().sum())
+
+df['DATE'] = pd.to_datetime(df['DATE'])
+df.set_index('DATE', inplace=True)
+
+plt.figure(figsize=(12, 6))
+plt.plot(df['IPG2211A2N'], label='Original Data', color='blue')
+plt.title('Original Time Series Data')
+plt.xlabel('Date')
+plt.ylabel('IPG2211A2N')
+plt.legend()
+plt.show()
+
+
+scaler = MinMaxScaler(feature_range=(0, 1))
+df_scaled = scaler.fit_transform(df)
+
+train_size = int(len(df_scaled) * 0.80)
+train_data, test_data = df_scaled[0:train_size], df_scaled[train_size:]
+
+def create_sequences(data, seq_length):
+    sequences = []
+    for i in range(len(data) - seq_length):
+        sequence = data[i:i+seq_length]
+        sequences.append(sequence)
+    return np.array(sequences)
+
+sequence_length = 12
+
+train_sequences = create_sequences(train_data, sequence_length)
+test_sequences = create_sequences(test_data, sequence_length)
+
+X_train, y_train = train_sequences[:, :-1], train_sequences[:, -1]
+X_test, y_test = test_sequences[:, :-1], test_sequences[:, -1]
+
+X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+
+model = Sequential()
+model.add(LSTM(units=50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50, return_sequences=True))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50, return_sequences=True))
+model.add(Dropout(0.2))
+model.add(LSTM(units=50))
+model.add(Dropout(0.2))
+model.add(Dense(units=1))
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+model.fit(X_train, y_train, epochs=100, batch_size=32, verbose=1)
+
+predictions = model.predict(X_test)
+
+predictions = scaler.inverse_transform(predictions.reshape(-1, 1))
+y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+
+
+
+# Plot the results
+plt.figure(figsize=(12, 6))
+plt.plot(df.index[-len(y_test):], y_test, label='Actual Data', color='blue')
+plt.plot(df.index[-len(predictions):], predictions, label='Predictions', color='red', linestyle='--')
+plt.title('LSTM Prediction vs Actual Data')
+plt.xlabel('Date')
+plt.ylabel('IPG2211A2N')
+plt.legend()
+plt.show()
